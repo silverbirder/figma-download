@@ -54,6 +54,7 @@ export const figmaDownload = async (args: Arguments) => {
         ctx.files = [];
         ctx.filesCache = false;
         ctx.nodes = [];
+        ctx.node = {};
       },
     },
     {
@@ -198,7 +199,7 @@ export const figmaDownload = async (args: Arguments) => {
       },
     },
     {
-      title: "Get detail file by file",
+      title: "Get node id by file",
       skip: (ctx) => {
         if (!(ctx.files || args.file)) {
           return "skip because -t or -p or -f has not been passed.";
@@ -227,45 +228,15 @@ export const figmaDownload = async (args: Arguments) => {
                                 `${output}/file_by_file_${file.key}.${format}`,
                                 format
                               );
-                              if (data !== "") {
-                                return "Skip because exist cache";
-                              }
+                              // if (data !== "") {
+                              //   return "Skip because exist cache";
+                              // }
                             },
                             task: async (ctx) => {
                               await queue.add(async () => {
-                                const data = await api
-                                  .getFile(file.key)
-                                  .catch(async (error) => {
-                                    if (error.response.status === 500) {
-                                      const retryData = await api.getFile(
-                                        file.key,
-                                        { depth: 1 }
-                                      );
-                                      const {
-                                        document: { children },
-                                      } = retryData;
-                                      retryData.document.children =
-                                        await Promise.all(
-                                          children.map(async (child) => {
-                                            const innerData = await api.getFile(
-                                              file.key,
-                                              {
-                                                ids: [child.id],
-                                              }
-                                            );
-                                            const {
-                                              document: {
-                                                children: innerChildrenData,
-                                              },
-                                            } = innerData;
-                                            return innerChildrenData.find(
-                                              (c) => c.id === child.id
-                                            );
-                                          })
-                                        );
-                                      return retryData;
-                                    }
-                                  });
+                                const data = await api.getFile(file.key, {
+                                  depth: 1,
+                                });
                                 data["id"] = file.key;
                                 ctx.nodes.push(data);
                                 return Promise.resolve();
@@ -297,6 +268,91 @@ export const figmaDownload = async (args: Arguments) => {
         ]);
       },
     },
+    {
+      title: "Get node",
+      skip: (ctx) => {
+        if (ctx.nodes.length === 0) {
+          return "skip because -t or -p or -f has not been passed.";
+        }
+      },
+      task: () => {
+        return new Listr([
+          {
+            title: "Fetch",
+            task: async (ctx) => {
+              const queue = new PQueue({ concurrency: 1 });
+              return new Listr(
+                ctx.nodes.map((node) => {
+                  return {
+                    title: `Fetching node`,
+                    task: () => {
+                      return new Listr(
+                        node.document.children.map((child) => {
+                          return {
+                            title: `Fetch node by file id $${node.id}`,
+                            // skip: async () => {
+                            // const data = await readFile(
+                            //   `${output}/node_by_${child.id}.${format}`,
+                            //   format
+                            // );
+                            // if (data !== "") {
+                            //   return "Skip because exist cache";
+                            // }
+                            // },
+                            task: async (ctx) => {
+                              await queue.add(async () => {
+                                const data = await api.getFileNodes(node.id, [
+                                  child.id,
+                                ]);
+                                const { nodes } = data;
+                                const { document } = nodes[child.id];
+                                const flatDocument = flatten([document]);
+                                if (!ctx.node[node.id]) {
+                                  ctx.node[node.id] = [];
+                                }
+                                ctx.node[node.id].push(flatDocument);
+                                return Promise.resolve();
+                              });
+                            },
+                          };
+                        }),
+                        { concurrent: true }
+                      );
+                    },
+                  };
+                }),
+                { concurrent: true }
+              );
+            },
+          },
+          {
+            title: "Save",
+            task: async (ctx) => {
+              await Promise.all(
+                Object.keys(ctx.node).map(async (nodeKey) => {
+                  await writeFile(
+                    `${output}/node_by_${nodeKey}.${format}`,
+                    format,
+                    ctx.node[nodeKey].flat()
+                  );
+                })
+              );
+            },
+          },
+        ]);
+      },
+    },
   ]);
   tasks.run();
 };
+
+function flatten(array, path = []) {
+  return array.reduce(function (flattened, item) {
+    const { children, ...other } = item;
+    path = [...path, other.id];
+    other["path"] = path;
+    return flattened
+      .concat([other])
+      .concat(children ? flatten(children, path) : []);
+  }, []);
+}
