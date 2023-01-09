@@ -222,7 +222,7 @@ export const figmaDownload = async (args: Arguments) => {
                       return new Listr(
                         files.map((file) => {
                           return {
-                            title: `Fetch by file id $${file.key}`,
+                            title: `Fetch by file id ${file.key}`,
                             skip: async () => {
                               const data = await readFile(
                                 `${output}/file_by_file_${file.key}.${format}`,
@@ -289,7 +289,7 @@ export const figmaDownload = async (args: Arguments) => {
                       return new Listr(
                         node.document.children.map((child) => {
                           return {
-                            title: `Fetch node by file id $${node.id}`,
+                            title: `Fetch node by file id ${node.id} and node id ${child.id}`,
                             // skip: async () => {
                             // const data = await readFile(
                             //   `${output}/node_by_${child.id}.${format}`,
@@ -308,7 +308,7 @@ export const figmaDownload = async (args: Arguments) => {
                                 const { document } = nodes[child.id];
                                 const flatDocument = flatten([document]);
                                 await writeFile(
-                                  `${output}/node_by_${node.id}.${format}`,
+                                  `${output}/node_by_${node.id}_${child.id}.${format}`,
                                   format,
                                   flatDocument.flat()
                                 );
