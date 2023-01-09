@@ -307,10 +307,11 @@ export const figmaDownload = async (args: Arguments) => {
                                 const { nodes } = data;
                                 const { document } = nodes[child.id];
                                 const flatDocument = flatten([document]);
-                                if (!ctx.node[node.id]) {
-                                  ctx.node[node.id] = [];
-                                }
-                                ctx.node[node.id].push(flatDocument);
+                                await writeFile(
+                                  `${output}/node_by_${node.id}.${format}`,
+                                  format,
+                                  flatDocument.flat()
+                                );
                                 return Promise.resolve();
                               });
                             },
@@ -325,20 +326,20 @@ export const figmaDownload = async (args: Arguments) => {
               );
             },
           },
-          {
-            title: "Save",
-            task: async (ctx) => {
-              await Promise.all(
-                Object.keys(ctx.node).map(async (nodeKey) => {
-                  await writeFile(
-                    `${output}/node_by_${nodeKey}.${format}`,
-                    format,
-                    ctx.node[nodeKey].flat()
-                  );
-                })
-              );
-            },
-          },
+          // {
+          //   title: "Save",
+          //   task: async (ctx) => {
+          //     await Promise.all(
+          //       Object.keys(ctx.node).map(async (nodeKey) => {
+          //         await writeFile(
+          //           `${output}/node_by_${nodeKey}.${format}`,
+          //           format,
+          //           ctx.node[nodeKey].flat()
+          //         );
+          //       })
+          //     );
+          //   },
+          // },
         ]);
       },
     },
